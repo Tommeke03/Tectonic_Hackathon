@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - FileEater</title>
+    <style>
+      :root {
+        --bg-color: #0e0d0d;
+        --card-bg: #1a1716;
+        --border-color: #38231c;
+        --text-primary: #f5ebe6;
+        --text-secondary: #a3928c;
+        --accent-color: #f97316;
+        --accent-hover: #ea580c;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+      }
+
+      .login-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2.5rem 2rem;
+        width: 100%;
+        max-width: 400px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      }
+
+      .logo-header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+
+      .logo-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--accent-color);
+        margin-bottom: 0.25rem;
+      }
+
+      .logo-subtitle {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .form-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      input[type="text"]:focus,
+      input[type="password"]:focus {
+        border-color: var(--accent-color);
+      }
+
+      .btn-submit {
+        width: 100%;
+        padding: 0.85rem 1.5rem;
+        border-radius: 6px;
+        border: none;
+        background-color: var(--accent-color);
+        color: #0f172a;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
+        transition: background-color 0.2s;
+      }
+
+      .btn-submit:hover {
+        background-color: var(--accent-hover);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="login-card">
+      <div class="logo-header">
+        <div class="logo-title">GraphSearch</div>
+        <div class="logo-subtitle">Sign in to FileEater Workspace</div>
+      </div>
+
+      <!-- event.preventDefault() inside handleLogin prevents standard page refresh -->
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input
+            type="text"
+            placeholder="Username"
+            value="demo_user"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input
+            type="password"
+            placeholder="Password"
+            value="••••••••"
+            required
+          />
+        </div>
+
+        <button type="submit" class="btn-submit">Log In to FileEater</button>
+      </form>
+    </div>
+
+    <script>
+      function handleLogin(event) {
+        event.preventDefault(); // Stop form submission from refreshing login.html
+        localStorage.setItem("user", "Demo User");
+        window.location.href = "index.html"; // Navigate to main app
+      }
+    </script>
+  </body>
+</html>

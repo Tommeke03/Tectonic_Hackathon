@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knowledge Graph - Document Ingestion</title>
+    <!-- D3.js for Graph Preview -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+      :root {
+        --bg-color: #0e0d0d;
+        --card-bg: #1a1716;
+        --border-color: #38231c;
+        --text-primary: #f5ebe6;
+        --text-secondary: #a3928c;
+        --accent-color: #f97316;
+        --accent-hover: #ea580c;
+        --success-color: #10b981;
+        --warning-color: #f50b0b;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Top Header */
+      header {
+        padding: 1rem 2rem;
+        background-color: var(--card-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .logo-group {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+      }
+
+      .logo {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--accent-color);
+      }
+
+      .nav-link {
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.9rem;
+        transition: color 0.2s;
+      }
+
+      .nav-link:hover {
+        color: var(--text-primary);
+      }
+
+      /* Main Container */
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 100%;
+        flex: 1;
+      }
+
+      /* Card Section */
+      .card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+      }
+
+      .card-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      /* Drag & Drop Zone */
+      .dropzone {
+        border: 2px dashed var(--border-color);
+        border-radius: 8px;
+        padding: 2.5rem 1.5rem;
+        text-align: center;
+        background-color: rgba(15, 23, 42, 0.4);
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background-color 0.2s;
+      }
+
+      .dropzone:hover,
+      .dropzone.dragover {
+        border-color: var(--accent-color);
+        background-color: rgba(56, 189, 248, 0.05);
+      }
+
+      .dropzone-icon {
+        font-size: 2.5rem;
+        color: var(--accent-color);
+        margin-bottom: 0.5rem;
+      }
+
+      .dropzone-text {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+      }
+
+      .dropzone-text strong {
+        color: var(--accent-color);
+      }
+
+      #file-input {
+        display: none;
+      }
+
+      /* Staged Files List */
+      .file-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        max-height: 250px;
+        overflow-y: auto;
+      }
+
+      .file-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+      }
+
+      .file-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .file-name {
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+
+      .file-size {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      .remove-btn {
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0.2rem 0.5rem;
+      }
+
+      /* Metadata Form */
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .form-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .form-input,
+      .form-select,
+      .form-textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        outline: none;
+      }
+
+      .form-input:focus,
+      .form-select:focus,
+      .form-textarea:focus {
+        border-color: var(--accent-color);
+      }
+
+      .form-textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+
+      /* Entity Tag Pills */
+      .tags-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        min-height: 42px;
+      }
+
+      .tag-pill {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: var(--accent-color);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        padding: 0.25rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .tag-pill span {
+        cursor: pointer;
+        font-weight: bold;
+      }
+
+      /* Graph Preview Box */
+      .graph-preview-box {
+        background-color: #0b1120;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        height: 220px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      #preview-svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Buttons */
+      .btn {
+        padding: 0.85rem 1.5rem;
+        border-radius: 6px;
+        border: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      .btn-primary {
+        background-color: var(--accent-color);
+        color: #0f172a;
+      }
+
+      .btn-primary:hover {
+        background-color: var(--accent-hover);
+      }
+
+      .btn-secondary {
+        background-color: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+      }
+
+      .btn-secondary:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+      }
+
+      /* Processing Status Banner */
+      .status-banner {
+        display: none;
+        padding: 1rem;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+      }
+
+      .status-banner.success {
+        display: flex;
+        background-color: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        color: var(--success-color);
+      }
+
+      /* Graph Styling */
+      .node circle {
+        stroke: #fff;
+        stroke-width: 1.5px;
+      }
+      .node text {
+        fill: var(--text-primary);
+        font-size: 10px;
+        pointer-events: none;
+      }
+      .link {
+        stroke: var(--border-color);
+        stroke-opacity: 0.8;
+        stroke-width: 1.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo-group">
+        <div class="logo">GraphSearch</div>
+        <span style="color: var(--border-color)">|</span>
+        <span style="font-size: 0.9rem; color: var(--text-secondary)"
+          >Document Ingestion Pipeline</span
+        >
+      </div>
+      <div>
+        <a href="index.html" class="nav-link">← Back to Search</a>
+      </div>
+    </header>
+
+    <div class="container">
+      <!-- Left Side: File Upload & Staging -->
+      <div class="card">
+        <div class="card-title">
+          1. Upload Documents
+          <span
+            style="
+              font-size: 0.8rem;
+              font-weight: normal;
+              color: var(--text-secondary);
+            "
+            >PDF, DOCX, TXT, Teams Exports</span
+          >
+        </div>
+
+        <!-- Dropzone -->
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">📁</div>
+          <div class="dropzone-text">
+            Drag and drop your files here, or <strong>browse</strong>
+          </div>
+          <input
+            type="file"
+            id="file-input"
+            multiple
+            accept=".pdf,.docx,.txt,.json,.md"
+          />
+        </div>
+
+        <!-- Staged File Queue -->
+        <div class="form-group">
+          <label class="form-label"
+            >Staged Files (<span id="file-count">0</span>)</label
+          >
+          <div class="file-list" id="file-list">
+            <div
+              style="
+                text-align: center;
+                color: var(--text-secondary);
+                padding: 1rem;
+                font-size: 0.85rem;
+              "
+            >
+              No files uploaded yet.
+            </div>
+          </div>
+        </div>
+
+        <!-- Teams Thread / Context Import Simulation -->
+        <div class="form-group">
+          <label class="form-label"
+            >Link Microsoft Teams Thread Context (Optional)</label
+          >
+          <input
+            type="url"
+            id="teams-url"
+            class="form-input"
+            placeholder="https://teams.microsoft.com/l/message/..."
+          />
+        </div>
+      </div>
+
+      <!-- Right Side: Metadata Extraction & Graph Preview -->
+      <div class="card">
+        <div class="card-title">
+          2. Context & Knowledge Graph Linkage
+          <button
+            type="button"
+            class="btn btn-secondary"
+            style="padding: 0.4rem 0.8rem; font-size: 0.8rem"
+            id="ai-extract-btn"
+          >
+            ⚡ Auto-Extract AI Metadata
+          </button>
+        </div>
+
+        <form id="ingestion-form" onsubmit="handleIngestionSubmit(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Primary Author</label>
+              <input
+                type="text"
+                id="meta-author"
+                class="form-input"
+                placeholder="e.g., Sarah Connor"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Target Department</label>
+              <select id="meta-dept" class="form-select" required>
+                <option value="">Select Department...</option>
+                <option value="HR">HR / People</option>
+                <option value="Engineering">Engineering</option>
+                <option value="Marketing">Marketing</option>
+                <option value="Legal">Legal & Compliance</option>
+                <option value="Finance">Finance</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem">
+            <label class="form-label"
+              >Extracted Key Topics / Entities (Nodes)</label
+            >
+            <div class="tags-container" id="tags-container">
+              <!-- Dynamic Tags -->
+              <span class="tag-pill">HR Policy <span>×</span></span>
+              <span class="tag-pill">SD Worx <span>×</span></span>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem">
+            <label class="form-label">Graph Relationship Preview</label>
+            <div class="graph-preview-box">
+              <svg id="preview-svg"></svg>
+            </div>
+          </div>
+
+          <div style="margin-top: 1.5rem; display: flex; gap: 1rem">
+            <button type="submit" class="btn btn-primary" style="flex: 1">
+              Ingest & Build Knowledge Graph
+            </button>
+          </div>
+        </form>
+
+        <div id="status-banner" class="status-banner success">
+          ✓ Document(s) successfully indexed and linked to Knowledge Graph!
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // File Queue Management
+      let stagedFiles = [];
+      const dropzone = document.getElementById("dropzone");
+      const fileInput = document.getElementById("file-input");
+      const fileList = document.getElementById("file-list");
+      const fileCount = document.getElementById("file-count");
+
+      // Drag & Drop Listeners
+      dropzone.addEventListener("click", () => fileInput.click());
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+      dropzone.addEventListener("dragleave", () =>
+        dropzone.classList.remove("dragover"),
+      );
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length > 0) {
+          addFiles(e.dataTransfer.files);
+        }
+      });
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          addFiles(e.target.files);
+        }
+      });
+
+      function addFiles(files) {
+        Array.from(files).forEach((file) => {
+          stagedFiles.push(file);
+        });
+        updateFileList();
+        updateGraphPreview();
+      }
+
+      function removeFile(index) {
+        stagedFiles.splice(index, 1);
+        updateFileList();
+        updateGraphPreview();
+      }
+
+      function updateFileList() {
+        fileCount.textContent = stagedFiles.length;
+        if (stagedFiles.length === 0) {
+          fileList.innerHTML = `<div style="text-align: center; color: var(--text-secondary); padding: 1rem; font-size: 0.85rem;">No files uploaded yet.</div>`;
+          return;
+        }
+
+        fileList.innerHTML = "";
+        stagedFiles.forEach((file, index) => {
+          const item = document.createElement("div");
+          item.className = "file-item";
+          item.innerHTML = `
+                    <div class="file-info">
+                        <span style="color: var(--accent-color)">📄</span>
+                        <div>
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-size">${(file.size / 1024).toFixed(1)} KB</div>
+                        </div>
+                    </div>
+                    <button class="remove-btn" onclick="removeFile(${index})">✕</button>
+                `;
+          fileList.appendChild(item);
+        });
+      }
+
+      // Mock AI Extraction Trigger
+      document
+        .getElementById("ai-extract-btn")
+        .addEventListener("click", () => {
+          if (stagedFiles.length === 0) {
+            alert("Please upload at least one document first.");
+            return;
+          }
+
+          // Simulate metadata generation based on file name
+          const firstName = stagedFiles[0].name.toLowerCase();
+          document.getElementById("meta-author").value = "Alex Mercer";
+
+          if (firstName.includes("tech") || firstName.includes("dev")) {
+            document.getElementById("meta-dept").value = "Engineering";
+          } else if (
+            firstName.includes("legal") ||
+            firstName.includes("policy")
+          ) {
+            document.getElementById("meta-dept").value = "Legal";
+          } else {
+            document.getElementById("meta-dept").value = "HR";
+          }
+
+          // Add simulated tags
+          const tagsContainer = document.getElementById("tags-container");
+          tagsContainer.innerHTML = `
+                <span class="tag-pill">Automated Extract <span>×</span></span>
+                <span class="tag-pill">2026 Guidelines <span>×</span></span>
+                <span class="tag-pill">Compliance <span>×</span></span>
+            `;
+
+          updateGraphPreview();
+        });
+
+      // Interactive Graph Linkage Preview (D3.js)
+      function updateGraphPreview() {
+        const svg = d3.select("#preview-svg");
+        svg.selectAll("*").remove();
+
+        const width = document.querySelector(".graph-preview-box").clientWidth;
+        const height =
+          document.querySelector(".graph-preview-box").clientHeight;
+
+        const docName =
+          stagedFiles.length > 0 ? stagedFiles[0].name : "New Document";
+        const author = document.getElementById("meta-author").value || "Author";
+        const dept = document.getElementById("meta-dept").value || "Department";
+
+        const nodes = [
+          {
+            id: "doc",
+            label: docName.substring(0, 15) + "...",
+            type: "document",
+          },
+          { id: "author", label: author, type: "author" },
+          { id: "dept", label: dept, type: "dept" },
+          { id: "topic1", label: "Extracted Topic", type: "topic" },
+        ];
+
+        const links = [
+          { source: "author", target: "doc" },
+          { source: "doc", target: "dept" },
+          { source: "doc", target: "topic1" },
+        ];
+
+        const simulation = d3
+          .forceSimulation(nodes)
+          .force(
+            "link",
+            d3
+              .forceLink(links)
+              .id((d) => d.id)
+              .distance(60),
+          )
+          .force("charge", d3.forceManyBody().strength(-150))
+          .force("center", d3.forceCenter(width / 2, height / 2));
+
+        const link = svg
+          .append("g")
+          .selectAll("line")
+          .data(links)
+          .enter()
+          .append("line")
+          .attr("class", "link");
+
+        const node = svg
+          .append("g")
+          .selectAll(".node")
+          .data(nodes)
+          .enter()
+          .append("g")
+          .attr("class", "node");
+
+        node
+          .append("circle")
+          .attr("r", (d) => (d.type === "document" ? 10 : 7))
+          .attr("fill", (d) => {
+            if (d.type === "document") return "#38bdf8";
+            if (d.type === "author") return "#f43f5e";
+            if (d.type === "dept") return "#f59e0b";
+            return "#10b981";
+          });
+
+        node
+          .append("text")
+          .attr("dx", 12)
+          .attr("dy", ".35em")
+          .text((d) => d.label);
+
+        simulation.on("tick", () => {
+          link
+            .attr("x1", (d) => d.source.x)
+            .attr("y1", (d) => d.source.y)
+            .attr("x2", (d) => d.target.x)
+            .attr("y2", (d) => d.target.y);
+
+          node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+        });
+      }
+
+      // Initialize preview once on load
+      updateGraphPreview();
+
+      /**
+       * Submit Handler
+       * ===============
+       * Backend integration logic placeholder
+       */
+      async function handleIngestionSubmit(event) {
+        event.preventDefault();
+
+        if (stagedFiles.length === 0) {
+          alert("Please add at least one document to ingest.");
+          return;
+        }
+
+        // Prepare Payload / Multipart FormData
+        const formData = new FormData();
+        stagedFiles.forEach((file) => formData.append("files", file));
+        formData.append("author", document.getElementById("meta-author").value);
+        formData.append(
+          "department",
+          document.getElementById("meta-dept").value,
+        );
+        formData.append("teamsUrl", document.getElementById("teams-url").value);
+
+        console.log("Submitting ingestion payload...");
+
+        // --- BACKEND INTEGRATION POINT ---
+        /*
+            try {
+                const response = await fetch('/api/ingest', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                console.log("Success:", result);
+            } catch (error) {
+                console.error("Error ingesting documents:", error);
+            }
+            */
+
+        // Show Mock Success Message
+        const banner = document.getElementById("status-banner");
+        banner.style.display = "flex";
+        setTimeout(() => {
+          banner.style.display = "none";
+        }, 4000);
+      }
+    </script>
+  </body>
+</html>

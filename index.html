@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knowledge Graph Search Engine</title>
+    <!-- D3.js for rendering the Knowledge Graph -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+      :root {
+        --bg-color: #0e0d0d;
+        --card-bg: #1a1716;
+        --border-color: #38231c;
+        --text-primary: #f5ebe6;
+        --text-secondary: #a3928c;
+        --accent-color: #f97316;
+        --accent-hover: #ea580c;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* Top Header Search Bar & Actions */
+      header {
+        padding: 1rem 2rem;
+        background-color: var(--card-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+      }
+
+      .logo-section {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex: 1;
+        max-width: 800px;
+      }
+
+      .logo {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--accent-color);
+        white-space: nowrap;
+      }
+
+      .search-container {
+        flex: 1;
+        position: relative;
+      }
+
+      .search-input {
+        width: 100%;
+        padding: 0.75rem 1.25rem;
+        border-radius: 9999px;
+        border: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        color: var(--text-primary);
+        font-size: 1rem;
+        outline: none;
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+      }
+
+      .search-input:focus {
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.25);
+      }
+
+      /* Add Document Navigation Button */
+      .add-doc-btn {
+        background-color: var(--accent-color);
+        color: #0e0d0d;
+        padding: 0.65rem 1.25rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        white-space: nowrap;
+        transition:
+          background-color 0.2s,
+          transform 0.1s;
+      }
+
+      .add-doc-btn:hover {
+        background-color: var(--accent-hover);
+        transform: translateY(-1px);
+      }
+
+      /* Main Layout */
+      .main-layout {
+        display: flex;
+        flex: 1;
+        height: calc(100vh - 73px);
+        overflow: hidden;
+      }
+
+      /* Left Side: Results Feed */
+      .results-panel {
+        width: 40%;
+        min-width: 350px;
+        max-width: 550px;
+        border-right: 1px solid var(--border-color);
+        overflow-y: auto;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .result-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1.25rem;
+        cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      .result-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-color);
+      }
+
+      .result-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--accent-color);
+        margin-bottom: 0.5rem;
+      }
+
+      .result-snippet {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        line-height: 1.4;
+        margin-bottom: 0.75rem;
+      }
+
+      .result-meta {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .tag {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        background-color: rgba(249, 115, 22, 0.12);
+        color: var(--accent-color);
+        border: 1px solid rgba(249, 115, 22, 0.25);
+      }
+
+      .metric-badge {
+        margin-left: auto;
+        font-size: 0.75rem;
+        color: #f59e0b;
+        font-weight: 600;
+      }
+
+      /* Right Side: Graph Viewport */
+      .graph-panel {
+        flex: 1;
+        position: relative;
+        background-color: #0a0909;
+        overflow: hidden;
+      }
+
+      #graph-svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .graph-legend {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background-color: rgba(26, 23, 22, 0.85);
+        backdrop-filter: blur(4px);
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .empty-state {
+        text-align: center;
+        color: var(--text-secondary);
+        margin-top: 4rem;
+      }
+
+      /* Graph Elements Styling */
+      .node {
+        cursor: pointer;
+      }
+
+      .node image {
+        transition: filter 0.2s;
+      }
+
+      .node:hover image {
+        filter: drop-shadow(0px 0px 8px var(--accent-color));
+      }
+
+      .node text {
+        fill: var(--text-primary);
+        font-size: 11px;
+        pointer-events: none;
+        font-weight: 500;
+      }
+
+      .link {
+        stroke: var(--border-color);
+        stroke-opacity: 0.6;
+        stroke-width: 1.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header Section with Navigation Button -->
+    <header>
+      <div class="logo-section">
+        <div class="logo">GraphSearch</div>
+        <div class="search-container">
+          <input
+            type="text"
+            id="search-input"
+            class="search-input"
+            placeholder="Search topics, authors, or documents... (Press Enter)"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+
+      <!-- Button linking to the File Ingestion Page -->
+      <a href="add.html" class="add-doc-btn"> <span>+</span> Add Document </a>
+    </header>
+
+    <!-- Main Content Area -->
+    <div class="main-layout">
+      <!-- Left: Search Results Container -->
+      <div class="results-panel" id="results-panel">
+        <div class="empty-state">
+          Type a query above and press <strong>Enter</strong> to explore
+          documents and knowledge nodes.
+        </div>
+      </div>
+
+      <!-- Right: Graph Container -->
+
+      <div class="graph-panel">
+        <!--
+        <div class="graph-legend">
+          <div><strong>Node Size:</strong> Engagement / Metric Weight</div>
+          <div><strong>Icons:</strong> Node Type (SVG references)</div>
+        </div>
+         -->
+        <svg id="graph-svg"></svg>
+      </div>
+    </div>
+
+    <script>
+      // DOM Elements
+      const searchInput = document.getElementById("search-input");
+      const resultsPanel = document.getElementById("results-panel");
+      const svg = d3.select("#graph-svg");
+
+      // SVG Image Icon Data-URIs (Updated for Embers palette)
+      const SVG_ICONS = {
+        document:
+          'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23f97316"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>',
+        author:
+          'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ef4444"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>',
+        topic:
+          'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23f59e0b"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>',
+      };
+
+      // Event Listener: Trigger search on Enter key
+      searchInput.addEventListener("keypress", function (e) {
+        if (e.key === "Enter") {
+          const query = searchInput.value.trim();
+          if (query.length > 0) {
+            executeSearch(query);
+          }
+        }
+      });
+
+      /**
+       * Core Search Handler
+       */
+      async function executeSearch(query) {
+        const mockData = getMockData(query);
+
+        renderSearchResults(mockData.results);
+        renderKnowledgeGraph(mockData.graph);
+      }
+
+      /**
+       * Renders the document results list on the left panel
+       */
+      function renderSearchResults(results) {
+        resultsPanel.innerHTML = "";
+
+        if (results.length === 0) {
+          resultsPanel.innerHTML =
+            '<div class="empty-state">No results found.</div>';
+          return;
+        }
+
+        results.forEach((result) => {
+          const card = document.createElement("div");
+          card.className = "result-card";
+          card.innerHTML = `
+                    <div class="result-title">${result.title}</div>
+                    <div class="result-snippet">${result.snippet}</div>
+                    <div class="result-meta">
+                        ${result.tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}
+                        <span class="metric-badge">Metric: ${result.metricScore}</span>
+                    </div>
+                `;
+
+          card.addEventListener("click", () => {
+            highlightGraphNode(result.nodeId);
+          });
+
+          resultsPanel.appendChild(card);
+        });
+      }
+
+      /**
+       * Renders the interactive graph with SVG image nodes dynamically scaled by metric
+       */
+      let simulation;
+
+      function renderKnowledgeGraph(graphData) {
+        svg.selectAll("*").remove();
+
+        const width = document.querySelector(".graph-panel").clientWidth;
+        const height = document.querySelector(".graph-panel").clientHeight;
+
+        const nodeSizeScale = d3
+          .scaleLinear()
+          .domain([10, 100])
+          .range([28, 64])
+          .clamp(true);
+
+        simulation = d3
+          .forceSimulation(graphData.nodes)
+          .force(
+            "link",
+            d3
+              .forceLink(graphData.links)
+              .id((d) => d.id)
+              .distance(130),
+          )
+          .force("charge", d3.forceManyBody().strength(-350))
+          .force("center", d3.forceCenter(width / 2, height / 2));
+
+        const link = svg
+          .append("g")
+          .selectAll("line")
+          .data(graphData.links)
+          .enter()
+          .append("line")
+          .attr("class", "link");
+
+        const node = svg
+          .append("g")
+          .selectAll(".node")
+          .data(graphData.nodes)
+          .enter()
+          .append("g")
+          .attr("class", "node")
+          .call(
+            d3
+              .drag()
+              .on("start", dragstarted)
+              .on("drag", dragged)
+              .on("end", dragended),
+          );
+
+        node
+          .append("image")
+          .attr("xlink:href", (d) => SVG_ICONS[d.type] || SVG_ICONS.topic)
+          .attr("width", (d) => nodeSizeScale(d.metric))
+          .attr("height", (d) => nodeSizeScale(d.metric))
+          .attr("x", (d) => -nodeSizeScale(d.metric) / 2)
+          .attr("y", (d) => -nodeSizeScale(d.metric) / 2)
+          .attr("id", (d) => `node-img-${d.id}`);
+
+        node
+          .append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", (d) => nodeSizeScale(d.metric) / 2 + 14)
+          .text((d) => d.label);
+
+        simulation.on("tick", () => {
+          link
+            .attr("x1", (d) => d.source.x)
+            .attr("y1", (d) => d.source.y)
+            .attr("x2", (d) => d.target.x)
+            .attr("y2", (d) => d.target.y);
+
+          node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+        });
+      }
+
+      function highlightGraphNode(nodeId) {
+        svg.selectAll("image").style("filter", "none");
+        const selectedImage = d3.select(`#node-img-${nodeId}`);
+        if (!selectedImage.empty()) {
+          selectedImage.style("filter", "drop-shadow(0px 0px 12px #f97316)");
+        }
+      }
+
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+
+      function getMockData(query) {
+        return {
+          results: [
+            {
+              nodeId: "doc_1",
+              title: `Architecture Guidelines for ${query}`,
+              snippet: `Comprehensive overview regarding context implementation and relational modeling strategies for ${query}.`,
+              tags: ["Architecture", "GraphRAG"],
+              metricScore: 95,
+            },
+            {
+              nodeId: "doc_2",
+              title: `Teams Discussion Summary: ${query}`,
+              snippet: `Key decisions and technical feedback gathered from recent discussion threads.`,
+              tags: ["Teams", "Context"],
+              metricScore: 60,
+            },
+            {
+              nodeId: "doc_3",
+              title: `Policy & Compliance Document`,
+              snippet: `Authoritative security guidelines and departmental authorization requirements.`,
+              tags: ["Security", "Legal"],
+              metricScore: 35,
+            },
+          ],
+          graph: {
+            nodes: [
+              {
+                id: "doc_1",
+                label: `Doc: ${query} Arch`,
+                type: "document",
+                metric: 95,
+              },
+              {
+                id: "doc_2",
+                label: "Doc: Teams Thread",
+                type: "document",
+                metric: 60,
+              },
+              {
+                id: "doc_3",
+                label: "Doc: Security Policy",
+                type: "document",
+                metric: 35,
+              },
+              {
+                id: "author_1",
+                label: "Sarah Connor",
+                type: "author",
+                metric: 80,
+              },
+              {
+                id: "topic_1",
+                label: "Knowledge Graph",
+                type: "topic",
+                metric: 100,
+              },
+              {
+                id: "topic_2",
+                label: "Security Audit",
+                type: "topic",
+                metric: 25,
+              },
+            ],
+            links: [
+              { source: "author_1", target: "doc_1" },
+              { source: "doc_1", target: "topic_1" },
+              { source: "doc_2", target: "doc_1" },
+              { source: "doc_3", target: "topic_2" },
+              { source: "doc_1", target: "topic_2" },
+            ],
+          },
+        };
+      }
+    </script>
+  </body>
+</html>
