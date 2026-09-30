@@ -313,14 +313,135 @@
         }
       });
 
+      // The knowledge graph exported by the ingestion pipeline (graph/graph.json at the repo root, written by ingestion_pipeline/ingestion.py)
+      let graphDataPromise = null;
+      function loadGraph() {
+        if (!graphDataPromise) {
+          graphDataPromise = fetch("../graph/graph.json").then((r) => {
+            if (!r.ok) throw new Error(`graph/graph.json: HTTP ${r.status}`);
+            return r.json();
+          });
+        }
+        return graphDataPromise;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+        );
+      }
+
       /**
-       * Core Search Handler
+       * Core Search Handler: answers the query from graph.json
        */
       async function executeSearch(query) {
-        const mockData = getMockData(query);
+        let graph;
+        try {
+          graph = await loadGraph();
+        } catch (err) {
+          resultsPanel.innerHTML = `<div class="empty-state">Could not load graph/graph.json (${escapeHtml(err.message)}). Serve the repository root over HTTP (<code>python3 -m http.server</code> from the repo root, then open /frontend/index.html) instead of opening the file directly.</div>`;
+          return;
+        }
+        const answer = searchGraph(graph, query);
+        renderSearchResults(answer.results);
+        renderKnowledgeGraph(answer.graph);
+      }
 
-        renderSearchResults(mockData.results);
-        renderKnowledgeGraph(mockData.graph);
+      /**
+       * Keyword search over the exported knowledge graph.
+       * Every source document is a "text_chunk" node; the entities extracted from it carry the same
+       * file_name in their properties, so that is how entities are tied back to their source.
+       */
+      function searchGraph(graph, query) {
+        const terms = query
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((t) => t.length >= 3);
+        const countHits = (text) => {
+          const lower = String(text ?? "").toLowerCase();
+          return terms.filter((t) => lower.includes(t)).length;
+        };
+
+        const entities = graph.nodes.filter((n) => n.type === "entity");
+        const docs = graph.nodes.filter((n) => n.type === "chunk");
+
+        // Score each document on its own text/metadata and on the entities extracted from it
+        const scored = docs
+          .map((doc) => {
+            const props = doc.properties || {};
+            const docEntities = entities.filter(
+              (e) => e.properties?.file_name === props.file_name,
+            );
+            const metaText = [props.title, props.author, props.status, props.country, props.file_name].join(" ");
+            let score =
+              countHits(doc.text) * 3 +
+              countHits(metaText) * 2 +
+              docEntities.reduce((sum, e) => sum + countHits(e.name), 0);
+            // Deprecated documents should not outrank the current version of a policy
+            if (String(props.status).toLowerCase() === "deprecated") score *= 0.5;
+            return { doc, props, docEntities, score };
+          })
+          .filter((d) => d.score > 0)
+          .sort((a, b) => b.score - a.score);
+
+        const maxScore = scored.length ? scored[0].score : 1;
+        const metric = (score) => Math.max(10, Math.round((score / maxScore) * 100));
+
+        const results = scored.map(({ doc, props, score }) => {
+          const tags = [props.status, props.author, props.country, props.created_at]
+            .filter(Boolean)
+            .map(String);
+          if (!tags.length) tags.push(props.file_name);
+          return {
+            nodeId: doc.id,
+            title: props.title || props.file_name || doc.id,
+            snippet: String(doc.text || "").replace(/^#+\s*/, "").slice(0, 240),
+            tags,
+            metricScore: metric(score),
+          };
+        });
+
+        // Graph: each matching document, its extracted entities, and the relations between them
+        const nodes = [];
+        const links = [];
+        const seen = new Set();
+        const addNode = (node) => {
+          if (!seen.has(node.id)) {
+            seen.add(node.id);
+            nodes.push(node);
+          }
+        };
+        const authorIds = new Set(
+          graph.edges
+            .filter((e) => /authored|sent/i.test(e.label))
+            .flatMap((e) => (/authored/i.test(e.label) ? [e.target] : [e.source])),
+        );
+        scored.forEach(({ doc, props, docEntities, score }) => {
+          addNode({
+            id: doc.id,
+            label: props.title || props.file_name || doc.id,
+            type: "document",
+            metric: metric(score),
+          });
+          docEntities.forEach((e) => {
+            addNode({
+              id: e.id,
+              label: e.name,
+              type: authorIds.has(e.id) ? "author" : "topic",
+              metric: countHits(e.name) > 0 ? 80 : 30,
+            });
+            links.push({ source: doc.id, target: e.id });
+          });
+        });
+        graph.edges.forEach((e) => {
+          if (seen.has(e.source) && seen.has(e.target)) {
+            links.push({ source: e.source, target: e.target });
+          }
+        });
+
+        return { results, graph: { nodes, links } };
       }
 
       /**
@@ -339,10 +460,10 @@
           const card = document.createElement("div");
           card.className = "result-card";
           card.innerHTML = `
-                    <div class="result-title">${result.title}</div>
-                    <div class="result-snippet">${result.snippet}</div>
+                    <div class="result-title">${escapeHtml(result.title)}</div>
+                    <div class="result-snippet">${escapeHtml(result.snippet)}</div>
                     <div class="result-meta">
-                        ${result.tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}
+                        ${result.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
                         <span class="metric-badge">Metric: ${result.metricScore}</span>
                     </div>
                 `;
@@ -435,7 +556,7 @@
 
       function highlightGraphNode(nodeId) {
         svg.selectAll("image").style("filter", "none");
-        const selectedImage = d3.select(`#node-img-${nodeId}`);
+        const selectedImage = d3.select(document.getElementById(`node-img-${nodeId}`));
         if (!selectedImage.empty()) {
           selectedImage.style("filter", "drop-shadow(0px 0px 12px #f97316)");
         }
@@ -456,81 +577,6 @@
         if (!event.active) simulation.alphaTarget(0);
         d.fx = null;
         d.fy = null;
-      }
-
-      function getMockData(query) {
-        return {
-          results: [
-            {
-              nodeId: "doc_1",
-              title: `Architecture Guidelines for ${query}`,
-              snippet: `Comprehensive overview regarding context implementation and relational modeling strategies for ${query}.`,
-              tags: ["Architecture", "GraphRAG"],
-              metricScore: 95,
-            },
-            {
-              nodeId: "doc_2",
-              title: `Teams Discussion Summary: ${query}`,
-              snippet: `Key decisions and technical feedback gathered from recent discussion threads.`,
-              tags: ["Teams", "Context"],
-              metricScore: 60,
-            },
-            {
-              nodeId: "doc_3",
-              title: `Policy & Compliance Document`,
-              snippet: `Authoritative security guidelines and departmental authorization requirements.`,
-              tags: ["Security", "Legal"],
-              metricScore: 35,
-            },
-          ],
-          graph: {
-            nodes: [
-              {
-                id: "doc_1",
-                label: `Doc: ${query} Arch`,
-                type: "document",
-                metric: 95,
-              },
-              {
-                id: "doc_2",
-                label: "Doc: Teams Thread",
-                type: "document",
-                metric: 60,
-              },
-              {
-                id: "doc_3",
-                label: "Doc: Security Policy",
-                type: "document",
-                metric: 35,
-              },
-              {
-                id: "author_1",
-                label: "Sarah Connor",
-                type: "author",
-                metric: 80,
-              },
-              {
-                id: "topic_1",
-                label: "Knowledge Graph",
-                type: "topic",
-                metric: 100,
-              },
-              {
-                id: "topic_2",
-                label: "Security Audit",
-                type: "topic",
-                metric: 25,
-              },
-            ],
-            links: [
-              { source: "author_1", target: "doc_1" },
-              { source: "doc_1", target: "topic_1" },
-              { source: "doc_2", target: "doc_1" },
-              { source: "doc_3", target: "topic_2" },
-              { source: "doc_1", target: "topic_2" },
-            ],
-          },
-        };
       }
     </script>
   </body>

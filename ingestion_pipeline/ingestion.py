@@ -6,8 +6,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from llama_index.core import Document, Settings, SimpleDirectoryReader
 from llama_index.core.graph_stores import SimplePropertyGraphStore
+from llama_index.core.graph_stores.types import ChunkNode
 from llama_index.core.indices.property_graph import (
-    ImplicitPathExtractor,
     PropertyGraphIndex,
     SimpleLLMPathExtractor,
 )
@@ -48,22 +48,27 @@ class JsonChatReader(BaseReader):
         ]
 
 
-# [FILL IN]: Point this at your actual folder of JSON files
-input_dir = BASE_DIR / "data"
-input_dir.mkdir(exist_ok=True)
+class MarkdownFrontMatterReader(BaseReader):
+    """Reads a Markdown file into one Document. The `key: value` front matter becomes metadata, the body becomes the text."""
 
-# Create a dummy JSON file only if there is no JSON yet, to avoid empty directory errors during testing
-if not any(input_dir.rglob("*.json")):
-    with open(input_dir / "sample.json", "w", encoding="utf-8") as f:
-        json.dump(
-            [{"text": "LlamaIndex is an orchestration framework. It helps developers build GraphRAG applications."}],
-            f,
-        )
+    def load_data(self, file, extra_info=None):
+        raw = Path(file).read_text(encoding="utf-8")
+        metadata, body = {}, raw
+        if raw.startswith("---"):
+            _, front_matter, body = raw.split("---", 2)
+            for line in front_matter.strip().splitlines():
+                key, _, value = line.partition(":")
+                metadata[key.strip()] = value.strip()
+        return [Document(text=body.strip(), metadata={**metadata, "file_name": Path(file).name, **(extra_info or {})})]
+
+
+# Ingest everything in the repo's assets folder (Markdown policies and Teams JSON exports)
+input_dir = BASE_DIR.parent / "assets"
 
 reader = SimpleDirectoryReader(
     input_dir=str(input_dir),
-    file_extractor={".json": JsonChatReader()},
-    required_exts=[".json"],  # only JSON files are read
+    file_extractor={".json": JsonChatReader(), ".md": MarkdownFrontMatterReader()},
+    required_exts=[".json", ".md"],
     recursive=True,
 )
 documents = reader.load_data()
@@ -77,7 +82,6 @@ graph_store = SimplePropertyGraphStore()
 
 # Extractors guide how entities and relations are extracted from the text chunks
 kg_extractors = [
-    ImplicitPathExtractor(),  # Infers implicit paths from existing node relationships
     SimpleLLMPathExtractor(llm=Settings.llm),  # Uses the LLM to extract entities and relations
 ]
 
@@ -89,12 +93,48 @@ index = PropertyGraphIndex.from_documents(
 )
 
 
-# 4. QUERYING THE GRAPHRAG SYSTEM
+# 4. EXPORT THE KNOWLEDGE GRAPH
+# graph.json goes to the repo-level graph/ folder, which the frontend reads directly;
+# LlamaIndex's own graph_store.json stays in this pipeline's output/ folder.
+graph_dir = BASE_DIR.parent / "graph"
+output_dir = BASE_DIR / "output"
+graph_dir.mkdir(exist_ok=True)
+output_dir.mkdir(exist_ok=True)
+
+# a) Plain JSON (nodes + edges, no embeddings) that any other application can read.
+#    Each node's "properties" carry the source file_name/file_path it was extracted from.
+graph = graph_store.graph
+nodes_out = [
+    {
+        "id": node.id,
+        "type": "chunk" if isinstance(node, ChunkNode) else "entity",
+        "label": node.label,
+        **({"text": node.text} if isinstance(node, ChunkNode) else {"name": node.name}),
+        "properties": node.properties,
+    }
+    for node in graph.nodes.values()
+]
+edges_out = [
+    {"source": r.source_id, "target": r.target_id, "label": r.label, "properties": r.properties}
+    for r in graph.relations.values()
+]
+with open(graph_dir / "graph.json", "w", encoding="utf-8") as f:
+    json.dump({"nodes": nodes_out, "edges": edges_out}, f, ensure_ascii=False, indent=2, default=str)
+
+# b) LlamaIndex's own format, only useful to reload the graph inside LlamaIndex. It has no embeddings
+#    (those live in a separate vector store that is not saved), so vector search will not work after reloading.
+#    SimplePropertyGraphStore.from_persist_path("output/graph_store.json")
+graph_store.persist(str(output_dir / "graph_store.json"))
+
+print(f"Exported {len(nodes_out)} nodes and {len(edges_out)} edges to {graph_dir / 'graph.json'}")
+
+
+# 5. QUERYING THE GRAPHRAG SYSTEM
 # Default retrievers: LLM synonym expansion + vector search over graph nodes
 query_engine = index.as_query_engine(llm=Settings.llm)
 
 # [FILL IN]: Run queries to test your knowledge graph
-query = "What framework helps build GraphRAG applications?"
+query = "Hoeveel thuiswerkvergoeding krijgt een werknemer in Belgie?"
 response = query_engine.query(query)
 print(f"Query: {query}")
 print(f"Answer: {response}")
