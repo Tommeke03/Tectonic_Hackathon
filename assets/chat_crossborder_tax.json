@@ -1,0 +1,16 @@
+[
+  {
+    "chat_id": "msg_4011",
+    "timestamp": "2026-03-01T14:02:00Z",
+    "sender": "Mark De Smet (Payroll Consultant)",
+    "channel": "NL-Helpdesk",
+    "content": "Geldt de kilometervergoeding van \u20ac0,44 ook voor de Nederlandse consultants die naar het kantoor in Antwerpen rijden?"
+  },
+  {
+    "chat_id": "msg_4012",
+    "timestamp": "2026-03-01T14:10:00Z",
+    "sender": "Karin Van Leeuwen (NL HR Tax Specialist)",
+    "channel": "NL-Helpdesk",
+    "content": "Nee! Absoluut niet. De Nederlandse fiscus staat onbelast maximaal \u20ac0,23 per km toe (2026 norm). Alles daarboven wordt belast als loon."
+  }
+]
